@@ -57,6 +57,7 @@ static uchar I2C_LCD_CMD_ALL_PX_ON = 0x23;
 static uchar I2C_LCD_CMD_ALL_PX_OFF = 0x22;
 static uchar I2C_LCD_CMD_WRITE_DATA = 0x5C;
 static uchar I2C_LCD_CMD_READ_DATA = 0x5D;
+static uchar I2C_LCD_CMD_EXIT_PARTIAL_MODE = 0xA9;
 
 typedef enum
 {
@@ -250,7 +251,7 @@ static ssize_t write_img_into_col_pg_rect(uchar* buf, int d_col_bytes, int d_row
         {
             rw_type = CASE_2_MULTI_PG;
             this_cycle_pg_cnt
-                = floor(MIN(remained_bytes, I2C_W_CMD_PARM_MAX_LEN)/ area_col_cnt);
+                = (int)floor(MIN(remained_bytes, I2C_W_CMD_PARM_MAX_LEN)/ (area_col_cnt * 1.0));
             this_cycle_col_cnt = area_col_cnt;
         }
         else
@@ -292,12 +293,12 @@ static ssize_t write_img_into_col_pg_rect(uchar* buf, int d_col_bytes, int d_row
                 break;
 
             case CASE_2_MULTI_PG:
-                pg_ptr += floor(actual_written_data / this_cycle_col_cnt);
+                pg_ptr += (int)floor(actual_written_data / (this_cycle_col_cnt * 1.0));
                 col_ptr = col_s + (actual_written_data % this_cycle_col_cnt);
                 break;
 
             default: //assuming CASE_3_COL_REMAINS
-                pg_ptr += floor(actual_written_data / this_cycle_col_cnt);
+                pg_ptr += (int)floor(actual_written_data / (this_cycle_col_cnt * 1.0));
                 col_ptr = col_s + (col_ptr - col_s + actual_written_data) % area_col_cnt;
         }
         this_cycle_written_bytes = actual_written_data;
@@ -539,6 +540,7 @@ int main(int argc, char** argv)
 
     int r_col_s, r_col_cnt, r_pg_s, r_pg_cnt;
     ssize_t cmd_ret;
+    bool end;
 
     printf("Now begin lcd_test...\n");
     open_lcd_dev();
@@ -559,120 +561,169 @@ int main(int argc, char** argv)
     printf("initial_lcd\n");
     initial_lcd();
 
-    //clear_screen();
+    clear_screen();
 
-    while(true)
+    end = false;
+    while(!end)
     {
-        printf("input tes no:");
+        printf("input tes no:\n");
+        printf("0: clear screen.\n");
+        printf("1: fill bytes block at ddram pos.\n");
+        printf("2: fill bytes block of size at ddram pos.\n");
+        printf("3: draw image on screen.\n");
+        printf("4: draw image of size on screen.\n");
+        printf("5: all pixel on.\n");
+        printf("6: all pixel off.\n");
+        printf("7: exit partial mode.\n");
+        printf("-1: exit.\n");
+
         scanf("%d", &test_no);
         printf("\n");
-        if(test_no < 0)
-        {
-            break;
-        }
 
-        if(1 == test_no)
+        switch(test_no)
         {
-            printf("input write pos and data: col_s, pg_s, col_len, pg_len, d_byte:\n");
-            scanf("%d %d %d %d %d", &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
-            test_1_dup_fit(r_col_s, r_pg_s, r_col_cnt, r_pg_cnt, d_byte);
-        }
-        else if(2 == test_no)
-        {
-            printf("input write pos and data: data_w, data_h, col_s, pg_s, col_len, pg_len, d_byte:\n");
-            scanf("%d %d %d %d %d %d %d",
+            case 0:
+                clear_screen();
+                break;
+
+            case 1:
+            {
+                printf("input write pos and data: col_s, pg_s, col_len, pg_len, d_byte:\n");
+                scanf("%d %d %d %d %d", &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
+                test_1_dup_fit(r_col_s, r_pg_s, r_col_cnt, r_pg_cnt, d_byte);
+            }
+                break;
+
+            case 2:
+            {
+                printf("input write pos and data: data_w, data_h, col_s, pg_s, col_len, pg_len, d_byte:\n");
+                scanf("%d %d %d %d %d %d %d",
                     &d_w_bytes, &d_h_bytes, &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
-            test_2_dup_block(d_w_bytes, d_h_bytes, r_col_s, r_pg_s, r_col_cnt, r_pg_cnt, d_byte);
-        }
-        else if(3 == test_no || 4 == test_no)
-        {
-            const int max_file_name_len = 128;
-            char img_file_name[max_file_name_len + 1];
-            char fmt_str[32];
-            FILE* img_f;
-            int px_wh[2];
-            size_t fread_cnt, img_data_len;
-            long file_pos;
-            struct stat f_stat_buf;
-            int f_ret;
-            unsigned char *img_data;
-            int rect_x, rect_y, rect_w, rect_h;
-
-            sprintf(fmt_str, "%%%ds", max_file_name_len);
-            printf("please input the img file name:");
-            scanf(fmt_str, img_file_name);
-            f_ret = stat(img_file_name, &f_stat_buf);
-            if(f_ret < 0)
-            {
-                printf("get info of file %s error, errno is %d.\n",
-                        img_file_name, errno);
-                continue;
+                test_2_dup_block(d_w_bytes, d_h_bytes, r_col_s, r_pg_s, r_col_cnt, r_pg_cnt,
+                                  d_byte);
             }
-            printf("File size: %d\n", f_stat_buf.st_size);
+                break;
 
-            img_f = fopen(img_file_name, "rb");
-            if(NULL == img_f)
+            case 3:
+            case 4:
             {
-                printf("Open file %s error.\n", img_file_name);
-                continue;
-            }
-            fread_cnt = fread(px_wh, sizeof(int), 2, img_f);
-            if(fread_cnt < 2)
-            {
-                printf("fread file %s width-height error, %d.\n", img_file_name, fread_cnt);
+                const int max_file_name_len = 128;
+                char img_file_name[max_file_name_len + 1];
+                char fmt_str[32];
+                FILE* img_f;
+                int px_wh[2];
+                size_t fread_cnt, img_data_len;
+                long file_pos;
+                struct stat f_stat_buf;
+                int f_ret;
+                unsigned char *img_data;
+                int rect_x, rect_y, rect_w, rect_h;
+
+                sprintf(fmt_str, "%%%ds", max_file_name_len);
+                printf("please input the img file name:");
+                scanf(fmt_str, img_file_name);
+                f_ret = stat(img_file_name, &f_stat_buf);
+                if(f_ret < 0)
+                {
+                    printf("get info of file %s error, errno is %d.\n",
+                            img_file_name, errno);
+                    break;
+                }
+                printf("File size: %d\n", f_stat_buf.st_size);
+
+                img_f = fopen(img_file_name, "rb");
+                if(NULL == img_f)
+                {
+                    printf("Open file %s error.\n", img_file_name);
+                    break;
+                }
+                fread_cnt = fread(px_wh, sizeof(int), 2, img_f);
+                if(fread_cnt < 2)
+                {
+                    printf("fread file %s width-height error, %d.\n", img_file_name, fread_cnt);
+                    fclose(img_f);
+                    break;
+                }
+                printf("img width and height (in pixel): %d, %d\n",
+                        px_wh[0], px_wh[1]);
+                img_data_len = f_stat_buf.st_size - 2 * sizeof(int);
+                if(((int)ceil(px_wh[1] / 8.0)) * px_wh[0] != img_data_len)
+                {
+                    printf("File size invlaid: img width and height does not match the size indicators at the first two int of the file.\n");
+                    printf("float h: %f\n",(ceil(px_wh[1] / 8.0)));
+                    printf("int h: %d\n",((int)ceil(px_wh[1] / 8.0)));
+                    printf("shoul-be len: %d\n",((int)ceil(px_wh[1] / 8.0)) * px_wh[0]);
+                    printf("img_data_len: %d\n", img_data_len);
+                    fclose(img_f);
+                    break;
+                }
+
+                img_data = malloc(img_data_len);
+                if(NULL == img_data)
+                {
+                    printf("malloc error for file %s, size %lu + %lu.\n",
+                            img_file_name, 2 * sizeof(int),  img_data_len); 
+                }
+                fread_cnt = fread(img_data, 1, img_data_len, img_f);
+                printf("read image data %d bytes.\n", fread_cnt);
+                if(fread_cnt != img_data_len)
+                {
+                    printf("read image data error.\n");
+                    free(img_data);
+                    fclose(img_f);
+                    break;
+                }
+
+                if(3 == test_no)
+                {
+                    printf("please input the rect start pos x and y:");
+                    scanf("%d%d", &rect_x, &rect_y);
+
+                    write_img_to_pos(img_data, px_wh[0], px_wh[1], rect_x, rect_y);
+                }
+                else
+                {
+                    printf("please input the rect start pos x and y, and width and height:");
+                    scanf("%d%d%d%d", &rect_x, &rect_y, &rect_w, &rect_h);
+                    write_img_to_px_rect(img_data, px_wh[0], px_wh[1], 
+                                          rect_x, rect_y, rect_w, rect_h);
+                }
+
+                free(img_data);
                 fclose(img_f);
-                continue;
             }
-            printf("img width and height (in pixel): %d, %d\n",
-                    px_wh[0], px_wh[1]);
-            img_data_len = f_stat_buf.st_size - 2 * sizeof(int);
-            if(((int)ceil(px_wh[1] / 8.0)) * px_wh[0] != img_data_len)
-            {
-                printf("File size invlaid: img width and height does not match the size indicators at the first two int of the file.\n");
-                printf("float h: %f\n",(ceil(px_wh[1] / 8.0)));
-                printf("int h: %d\n",((int)ceil(px_wh[1] / 8.0)));
-                printf("shoul-be len: %d\n",((int)ceil(px_wh[1] / 8.0)) * px_wh[0]);
-                printf("img_data_len: %d\n", img_data_len);
-                fclose(img_f);
-                continue;
-            }
+            break;
 
-            img_data = malloc(img_data_len);
-            if(NULL == img_data)
+            case 5:
             {
-                printf("malloc error for file %s, size %lu + %lu.\n",
-                        img_file_name, 2 * sizeof(int),  img_data_len); 
+                printf("turn on all pixels!\n");
+                cmd_ret = transfer_command_lcd(I2C_LCD_CMD_ALL_PX_ON, NULL, 0); 
+                printf("write cmd ret: %d\n", cmd_ret);
             }
+            break;
 
-            if(3 == test_no)
+            case 6:
             {
-                printf("please input the rect start pos x and y:");
-                scanf("%d%d", &rect_x, &rect_y);
-
-                write_img_to_pos(img_data, px_wh[0], px_wh[1], rect_x, rect_y);
+                printf("turn off all pixels!\n");
+                cmd_ret = transfer_command_lcd(I2C_LCD_CMD_ALL_PX_OFF , NULL, 0); 
+                printf("write cmd ret: %d\n", cmd_ret);
             }
-            else
+            break;
+
+            case 7:
             {
-                printf("please input the rect start pos x and y, and width and height:");
-                scanf("%d%d%d%d", &rect_x, &rect_y, &rect_w, &rect_h);
-                write_img_to_px_rect(img_data, px_wh[0], px_wh[1], 
-                                      rect_x, rect_y, rect_w, rect_h);
+                printf("exit partial mode.\n");
+                cmd_ret = transfer_command_lcd(I2C_LCD_CMD_EXIT_PARTIAL_MODE, NULL, 0); 
+                printf("write cmd ret: %d\n", cmd_ret);
             }
+            break;
 
-            free(img_data);
-            fclose(img_f);
-        }
-        else if(5 == test_no)
-        {
-            printf("turn on all pixels!\n");
-            cmd_ret = transfer_command_lcd(I2C_LCD_CMD_ALL_PX_ON, NULL, 0); 
-            printf("write cmd ret: %d\n", cmd_ret);
-        }
-        else if(6 == test_no)
-        {
-            printf("turn off all pixels!\n");
-            cmd_ret = transfer_command_lcd(I2C_LCD_CMD_ALL_PX_OFF , NULL, 0); 
-            printf("write cmd ret: %d\n", cmd_ret);
+            case -1:
+                end = true;
+                break;
+
+            default:
+                ;
         }
 
         printf("\n");
@@ -690,9 +741,10 @@ int main(int argc, char** argv)
  * into screen rectangle (scrn_px_x, scrn_px_y, scrn_px_w, scrn_px_h). If image and screen 
  * area does not fit, only the overlapped part of image is displayed.
  *
- * img_buf conatains image data in consectutive bytes. Every byte is displayed on screen with
- * LSB on top and MSB on bottom. img_pw_h may not be times of 8, and if so, the higer bits
- * are ignored.
+ * img_buf conatains image data in consectutive bytes, row by row, from left to right,
+ * from top to botom. Every byte is displayed on screen with LSB on top and MSB on bottom.
+ * img_pw_h may not be times of 8, and if so, the higer bits are ignored.
+ * 
  * */
 void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h, 
                       int scrn_px_x, int scrn_px_y, int scrn_px_w, int scrn_px_h)
@@ -709,19 +761,28 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
     }
     area_px_w = MIN(img_px_w, clipped_scrn_px_w);
     area_px_h = MIN(img_px_h, clipped_scrn_px_h);
+    printf("img_px_w: %d, img_px_h: %d, scrn_px_x: %d, scrn_px_y: %d, scrn_px_w: %d, scrn_px_h: %d\n",
+            img_px_w, img_px_h, scrn_px_x, scrn_px_y, scrn_px_w, scrn_px_h);
+    printf("area_px_w: %d, area_px_h: %d\n", area_px_w, area_px_h);
 
     /*Write image into local frame buffer.*/
     fb_col_s = scrn_px_x;
     fb_col_len = area_px_w;
-    fb_pg_s = floor(scrn_px_y / 8);
-    fb_pg_len = ceil((scrn_px_y + area_px_h) / 8) - fb_pg_s;
-    int img_pg_len = ceil(area_px_h / 8);
-    int img_pg_idx = 0, img_col_idx = 0;
+    fb_pg_s = (int)floor(scrn_px_y / 8.0);
+    fb_pg_len = (int)ceil((scrn_px_y + area_px_h) / 8.0) - fb_pg_s;
+    printf("fb_col_s: %d, fb_pg_s: %d, fb_col_len: %d, fb_pg_len: %d\n",
+          fb_col_s, fb_pg_s, fb_col_len, fb_pg_len);
+
+    int img_pg_len = (int)ceil(area_px_h / 8.0);
+    int img_pg_idx, img_col_idx = 0;
+    printf("img_pg_len: %d\n", img_pg_len);
+
     int fb_pg_idx = fb_pg_s, fb_col_idx = fb_col_s;
-    int fb_px_y = scrn_px_y, img_px_y = 0;
+    int fb_px_y = scrn_px_y;
 
     if(scrn_px_y % 8 == 0)
     {
+        img_pg_idx = 0;
         while(img_pg_idx < img_pg_len)
         {
             if(fb_px_y + 8 <= scrn_px_y + area_px_h)
@@ -732,7 +793,6 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
                 ++fb_pg_idx;
                 fb_px_y += 8;
                 ++img_pg_idx;
-                img_px_y += 8;
             }
             else
             {
@@ -740,7 +800,7 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
                 uchar mask_img = 0xFF >> (8 - rem_bits_num);
                 uchar mask_fb = ~mask_img; 
                 for(img_col_idx = 0, fb_col_idx = fb_col_s; 
-                    img_col_idx < area_px_w; ++img_col_idx, ++ fb_col_idx)
+                    img_col_idx < area_px_w; ++img_col_idx, ++fb_col_idx)
                 {
                     uchar img_b = mask_img & img_buf[img_pg_idx * img_px_w + img_col_idx];
                     uchar fb_b 
@@ -751,26 +811,63 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
                 ++fb_pg_idx;
                 fb_px_y += rem_bits_num;
                 ++img_pg_idx;
-                img_px_y += rem_bits_num;
             }
         }
     }
     else
     {
-        while(fb_pg_idx < fb_pg_s + fb_pg_len)
-        {
-            int top_rem_bits_num = fb_px_y % 8;
-            uchar top_mask_img = 0xFF << (8 - top_rem_bits_num);
-            uchar top_mask_fb = 0xFF << top_rem_bits_num; 
+        int bot_rem_bits_num = 8 - scrn_px_y % 8;
+        uchar bot_mask_img = 0xFF >> (8 - bot_rem_bits_num);
+        uchar bot_mask_fb =  0xFF >> bot_rem_bits_num; 
 
-            int bot_rem_bits_num = 8 - top_rem_bits_num;
-            uchar bot_mask_img = 0xFF >> (8 - bot_rem_bits_num);
-            uchar bot_mask_fb =  0xFF >> bot_rem_bits_num; 
+        int top_rem_bits_num = 8 - bot_rem_bits_num;
+        uchar top_mask_img = 0xFF << (8 - top_rem_bits_num);
+        uchar top_mask_fb = 0xFF << top_rem_bits_num; 
+
+        img_pg_idx = 0;
+        while(fb_px_y < scrn_px_y + area_px_h)
+        {
+            if(fb_px_y + bot_rem_bits_num > scrn_px_y + area_px_h)
+            {
+                bot_rem_bits_num = scrn_px_y + area_px_h - fb_px_y;
+                bot_mask_img = 0xFF >> (8 - bot_rem_bits_num);
+                bot_mask_fb =  0xFF >> (8 - scrn_px_y % 8); 
+                bot_mask_fb |= 0xFF << ((scrn_px_y % 8) + bot_rem_bits_num);
+            }
 
             for(img_col_idx = 0, fb_col_idx = fb_col_s; 
-                img_col_idx < area_px_w; ++img_col_idx, ++ fb_col_idx)
+                img_col_idx < area_px_w; ++img_col_idx, ++fb_col_idx)
             {
-                if(fb_pg_idx != fb_pg_s)
+                uchar bot_img_b 
+                    = bot_mask_img & img_buf[img_pg_idx * img_px_w + img_col_idx];
+                bot_img_b = bot_img_b << (8 - bot_rem_bits_num);
+                bot_img_b = bot_img_b >> (8 - (scrn_px_y % 8 + bot_rem_bits_num));
+
+                uchar bot_fb_b 
+                    = bot_mask_fb & gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM
+                                            + fb_col_idx];
+                gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM + fb_col_idx]
+                    = bot_img_b | bot_fb_b;
+            }
+
+            fb_px_y += bot_rem_bits_num;
+
+            printf("\n");
+            ++fb_pg_idx;
+
+            if(fb_px_y < scrn_px_y + area_px_h)
+            {
+                if(fb_px_y + top_rem_bits_num > scrn_px_y + area_px_h)
+                {
+                    top_rem_bits_num = scrn_px_y + area_px_h - fb_px_y;
+                    top_mask_fb =  0xFF >> (8 - top_mask_img); 
+
+                    top_mask_img = 0xFF << (8 - top_rem_bits_num);
+                    top_mask_fb = 0xFF << (8 - top_mask_img);
+                }
+
+                for(img_col_idx = 0, fb_col_idx = fb_col_s; 
+                    img_col_idx < area_px_w; ++img_col_idx, ++fb_col_idx)
                 {
                     uchar top_img_b 
                         = top_mask_img & img_buf[img_pg_idx * img_px_w + img_col_idx];
@@ -782,31 +879,15 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
                     gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM + fb_col_idx]
                         = top_img_b | top_fb_b;
                 }
-
-                if(fb_pg_idx != fb_pg_s + fb_pg_len -1)
-                {
-                    int cur_img_pg_idx;
-
-                    cur_img_pg_idx = (0 == fb_pg_idx) ? img_pg_idx : img_pg_idx + 1;
-                    uchar bot_img_b 
-                        = bot_mask_img & img_buf[(cur_img_pg_idx +1) * img_px_w
-                                                + img_col_idx];
-                    bot_img_b = bot_img_b << (8 - bot_rem_bits_num);
-
-                    uchar bot_fb_b 
-                        = bot_mask_fb & gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM
-                                                + fb_col_idx];
-                    gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM + fb_col_idx]
-                        = bot_img_b | bot_fb_b;
-                }
+                fb_px_y += top_rem_bits_num;
             }
 
-            ++fb_pg_idx;
-            fb_px_y += 8;
             ++img_pg_idx;
-            img_px_y += 8;
+            printf("\n");
         }
     }
+
+    printf("gs_local_frame_buf updted!\n");
 
     /*Collect the updated bytes in local frame buffer into a consecutive buffer.*/
     int to_ddram_bytes_num = fb_col_len * fb_pg_len;
