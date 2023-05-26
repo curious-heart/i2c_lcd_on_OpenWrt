@@ -840,8 +840,7 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
             {
                 uchar bot_img_b 
                     = bot_mask_img & img_buf[img_pg_idx * img_px_w + img_col_idx];
-                bot_img_b = bot_img_b << (8 - bot_rem_bits_num);
-                bot_img_b = bot_img_b >> (8 - (scrn_px_y % 8 + bot_rem_bits_num));
+                bot_img_b = bot_img_b << (scrn_px_y % 8);
 
                 uchar bot_fb_b 
                     = bot_mask_fb & gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM
@@ -860,10 +859,10 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
                 if(fb_px_y + top_rem_bits_num > scrn_px_y + area_px_h)
                 {
                     top_rem_bits_num = scrn_px_y + area_px_h - fb_px_y;
-                    top_mask_fb =  0xFF >> (8 - top_mask_img); 
 
-                    top_mask_img = 0xFF << (8 - top_rem_bits_num);
-                    top_mask_fb = 0xFF << (8 - top_mask_img);
+                    top_mask_img = 0xFF << (8 - scrn_px_y % 8);
+                    top_mask_img &=  0xFF >> (scrn_px_y % 8 - top_rem_bits_num);
+                    top_mask_fb = 0xFF << top_rem_bits_num;
                 }
 
                 for(img_col_idx = 0, fb_col_idx = fb_col_s; 
@@ -871,7 +870,7 @@ void write_img_to_px_rect(unsigned char* img_buf, int img_px_w, int img_px_h,
                 {
                     uchar top_img_b 
                         = top_mask_img & img_buf[img_pg_idx * img_px_w + img_col_idx];
-                    top_img_b = top_img_b >> (8 - top_rem_bits_num);
+                    top_img_b = top_img_b >> (8 - scrn_px_y % 8);
 
                     uchar top_fb_b 
                         = top_mask_fb & gs_local_frame_buf[fb_pg_idx * SCRN_PX_COL_NUM
