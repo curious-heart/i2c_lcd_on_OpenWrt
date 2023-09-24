@@ -88,6 +88,7 @@ static void test_2_dup_block(int d_w_bytes, int d_h_bytes, int col_s, int pg_s, 
     return;
 }
 
+#define MAX_INPUT_LEN 510
 int main(int argc, char** argv)
 {
     int d_w_bytes, d_h_bytes;
@@ -96,6 +97,7 @@ int main(int argc, char** argv)
 
     int r_col_s, r_col_cnt, r_pg_s, r_pg_cnt;
     bool lcd_ready = false, end;
+    char r_buf[MAX_INPUT_LEN + 1];
 
     printf("Now begin lcd_test...\n");
     lcd_ready = open_lcd_dev();
@@ -119,9 +121,11 @@ int main(int argc, char** argv)
         printf("5: all pixel on.\n");
         printf("6: all pixel off.\n");
         printf("7: exit all screen on/off mode.\n");
+        printf("8: fill screen.\n");
         printf("-1: exit.\n");
 
-        scanf("%d", &test_no);
+        fgets(r_buf, sizeof(r_buf), stdin);
+        sscanf(r_buf, "%d", &test_no);
         printf("\n");
 
         switch(test_no)
@@ -133,7 +137,8 @@ int main(int argc, char** argv)
             case 1:
             {
                 printf("input write pos and data: col_s, pg_s, col_len, pg_len, d_byte:\n");
-                scanf("%d %d %d %d %x", &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
+                fgets(r_buf, sizeof(r_buf), stdin);
+                sscanf(r_buf, "%d %d %d %d %x", &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
                 test_1_dup_fit(r_col_s, r_pg_s, r_col_cnt, r_pg_cnt, (uchar)d_byte);
             }
                 break;
@@ -141,7 +146,8 @@ int main(int argc, char** argv)
             case 2:
             {
                 printf("input write pos and data: data_w, data_h, col_s, pg_s, col_len, pg_len, d_byte:\n");
-                scanf("%d %d %d %d %d %d %x",
+                fgets(r_buf, sizeof(r_buf), stdin);
+                sscanf(r_buf, "%d %d %d %d %d %d %x",
                     &d_w_bytes, &d_h_bytes, &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
                 test_2_dup_block(d_w_bytes, d_h_bytes, r_col_s, r_pg_s, r_col_cnt, r_pg_cnt,
                                   (uchar)d_byte);
@@ -158,19 +164,22 @@ int main(int argc, char** argv)
 
                 sprintf(fmt_str, "%%%ds", max_file_name_len);
                 printf("please input the img file name:");
-                scanf(fmt_str, img_file_name);
+                fgets(r_buf, sizeof(r_buf), stdin);
+                sscanf(r_buf, fmt_str, img_file_name);
 
                 if(3 == test_no)
                 {
                     printf("please input the rect start pos x and y:");
-                    scanf("%d%d", &rect_x, &rect_y);
+                    fgets(r_buf, sizeof(r_buf), stdin);
+                    sscanf(r_buf, "%d%d", &rect_x, &rect_y);
 
                     write_img_file_to_px_pos(img_file_name, rect_x, rect_y);
                 }
                 else
                 {
                     printf("please input the rect start pos x and y, and width and height:");
-                    scanf("%d%d%d%d", &rect_x, &rect_y, &rect_w, &rect_h);
+                    fgets(r_buf, sizeof(r_buf), stdin);
+                    sscanf(r_buf, "%d%d%d%d", &rect_x, &rect_y, &rect_w, &rect_h);
 
                     write_img_file_to_px_rect(img_file_name, rect_x, rect_y, rect_w, rect_h);
                 }
@@ -195,6 +204,24 @@ int main(int argc, char** argv)
             {
                 printf("exit all screen on/off mode.\n");
                 exit_all_scrn_mode();
+            }
+            break;
+
+            case 8:
+            {
+                fill_screen();
+            }
+            break;
+
+            case 9:
+            {
+                /*This does not work...*/
+                void try_fast_fill(int col_s, int col_len, int pg_s, int pg_len, unsigned char d);
+
+                printf("input write pos and data: col_s, pg_s, col_len, pg_len, d_byte:\n");
+                fgets(r_buf, sizeof(r_buf), stdin);
+                sscanf(r_buf, "%d %d %d %d %x", &r_col_s, &r_pg_s, &r_col_cnt, &r_pg_cnt, &d_byte);
+                try_fast_fill(r_col_s, r_pg_s, r_col_cnt, r_pg_cnt, (uchar)d_byte);
             }
             break;
 

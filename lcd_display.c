@@ -37,7 +37,7 @@ static uchar gs_local_frame_buf[2048];
     (I2C_CMD_WITH_PARM_PREFIX_LEN + I2C_NON_RW_CMD_PARM_MAX_LEN)
 
 #define I2C_DEV_MAX_READ_LEN 64
-#define I2C_DEV_MAX_WRITE_LEN 64
+#define I2C_DEV_MAX_WRITE_LEN 2051//64
 
 #define I2C_W_CMD_BUF_SIZE I2C_DEV_MAX_WRITE_LEN
 #define I2C_W_CMD_PARM_MAX_LEN \
@@ -271,9 +271,9 @@ ssize_t write_img_into_col_pg_rect(uchar* buf, int d_col_bytes, int d_row_bytes,
             ++d_buf_row_idx;
             w_idx += this_cycle_col_cnt;
         }
-        /*
         printf("lcd_address: col_s %d, pg_s %d, col_cnt %d, pg_cnt %d.\n",
                 col_ptr, pg_ptr, this_cycle_col_cnt, this_cycle_pg_cnt);
+        /*
         print_bytes_arr(w_cmd_buf, w_idx, 16);
         */
         lcd_address(col_ptr, pg_ptr, this_cycle_col_cnt, this_cycle_pg_cnt);
@@ -440,6 +440,13 @@ void clear_screen()
 {
     printf("Clear screen.\n");
     memset(gs_local_frame_buf, 0, sizeof(gs_local_frame_buf));
+    write_img_into_col_pg_pos(gs_local_frame_buf, DDRAM_MAX_COL_NUM, DDRAM_MAX_PAGE_NUM, 0, 0);
+}
+
+void fill_screen()
+{
+    printf("Fill screen.\n");
+    memset(gs_local_frame_buf, 0xFF, sizeof(gs_local_frame_buf));
     write_img_into_col_pg_pos(gs_local_frame_buf, DDRAM_MAX_COL_NUM, DDRAM_MAX_PAGE_NUM, 0, 0);
 }
 
@@ -792,4 +799,34 @@ void all_scrn_px_off()
 void exit_all_scrn_mode()
 {
     transfer_command_lcd(I2C_LCD_CMD_EXIT_PARTIAL_MODE, NULL, 0); 
+}
+
+void try_fast_fill(int col_s, int pg_s, int col_len, int pg_len, unsigned char d)
+{
+    /*This does not work...*/
+    static unsigned char cmd_str[I2C_NON_RW_CMD_BUF_SIZE + I2C_W_CMD_BUF_SIZE];
+    int idx = 0;
+    int d_len = col_len * pg_len;
+
+    cmd_str[idx++] = 0x80; //I2C_LCD_CMD_CTRL_BYTE;
+    cmd_str[idx++] = 0x15;//Set Colomn Address
+    cmd_str[idx++] = 0xC0; //I2C_LCD_CMD_PARM_CTRL_BYTE;
+    cmd_str[idx++] = col_s;
+    cmd_str[idx++] = col_s + col_len - 1;
+//    lcd_write_io(cmd_str, idx);
+
+ //   idx = 0;
+    cmd_str[idx++] = 0x80; //I2C_LCD_CMD_CTRL_BYTE;
+    cmd_str[idx++] = 0x75;//Set Page Address
+    cmd_str[idx++] = 0xC0; //I2C_LCD_CMD_PARM_CTRL_BYTE;
+    cmd_str[idx++] = pg_s;
+    cmd_str[idx++] = pg_s + pg_len - 1;
+  //  lcd_write_io(cmd_str, idx);
+
+   // idx = 0;
+    cmd_str[idx++] = 0x80; //I2C_LCD_CMD_CTRL_BYTE;
+    cmd_str[idx++] = I2C_LCD_CMD_WRITE_DATA;
+    cmd_str[idx++] = 0x40; //I2C_LCD_DDRAM_DATA_CTRL_BYTE;
+    memset(&(cmd_str[idx]), d, d_len);
+    lcd_write_io(cmd_str, idx + d_len);
 }
